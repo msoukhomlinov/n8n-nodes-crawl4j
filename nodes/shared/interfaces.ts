@@ -308,6 +308,7 @@ export interface JobStatusResponse {
 	status: 'pending' | 'processing' | 'completed' | 'failed';
 	result?: CrawlResult | CrawlResult[];
 	message?: string;
+	error?: string;
 }
 
 // Monitor health response (GET /monitor/health)

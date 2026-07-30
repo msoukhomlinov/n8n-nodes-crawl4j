@@ -8,6 +8,7 @@ import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiNodeOptions, CrawlResult } from '../helpers/interfaces';
 import { getCrawl4aiClient } from '../../shared/utils';
+import { explainUntrustedConfigRejection } from '../../shared/apiClient';
 import { formatCrawlResult } from '../helpers/formatters';
 
 // --- UI Definition ---
@@ -108,12 +109,15 @@ export async function execute(
 					});
 				}
 			} else {
+				const rawError = statusResponse.error;
+				const error = rawError ? (explainUntrustedConfigRejection(rawError) ?? rawError) : undefined;
 				allResults.push({
 					json: {
 						taskId: statusResponse.task_id,
 						status: statusResponse.status,
 						checkedAt,
 						...(statusResponse.message ? { message: statusResponse.message } : {}),
+						...(error ? { error } : {}),
 					} as IDataObject,
 					pairedItem: { item: i },
 				});

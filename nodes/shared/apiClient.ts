@@ -1,6 +1,20 @@
 import type { IHttpRequestOptions } from 'n8n-workflow';
 import { Crawl4aiApiCredentials, FullCrawlConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
 
+const UNTRUSTED_CONFIG_REJECTION = /not permitted .* from an untrusted request|may not be constructed from an untrusted request/;
+
+/**
+ * Crawl4AI Docker API v0.9.0+ rejects certain fields/strategy types when sent
+ * over the network (see README "Crawl4AI Version Compatibility"). Both the
+ * synchronous /crawl 400 response and an async job's stored error use the
+ * same underlying message text, so this is shared between parseApiError()
+ * and getJobStatus's failed-job handling.
+ */
+export function explainUntrustedConfigRejection(detail: string): string | null {
+  if (!UNTRUSTED_CONFIG_REJECTION.test(detail)) return null;
+  return `Rejected by Crawl4AI: ${detail}. Crawl4AI Docker API server v0.9.0+ blocks this field/strategy over the network as a security measure (js_code, cookies, headers, proxy, magic/simulate_user, deep_crawl_strategy, and LLM-based extraction strategies are all affected) — there is no client-side workaround. See this package's README "Crawl4AI Version Compatibility" section, or use a Crawl4AI server on v0.8.9 or earlier for full feature support.`;
+}
+
 /**
  * Minimal structural type for the n8n request helper this client depends on.
  * Kept intentionally narrow (not the full IExecuteFunctions) so the client can
@@ -109,9 +123,8 @@ export class Crawl4aiClient {
 
         if (status === 400) {
           const detailStr = typeof detail === 'string' ? detail : '';
-          if (/not permitted .* from an untrusted request|may not be constructed from an untrusted request/.test(detailStr)) {
-            return `Rejected by Crawl4AI (400): ${detailStr}. Crawl4AI Docker API server v0.9.0+ blocks this field/strategy over the network as a security measure (js_code, cookies, headers, proxy, magic/simulate_user, deep_crawl_strategy, and LLM-based extraction strategies are all affected) — there is no client-side workaround. See this package's README "Crawl4AI Version Compatibility" section, or use a Crawl4AI server on v0.8.9 or earlier for full feature support.`;
-          }
+          const untrustedExplanation = explainUntrustedConfigRejection(detailStr);
+          if (untrustedExplanation) return untrustedExplanation;
           return `Invalid request (400): ${detail || 'Bad request format'}. Check your configuration parameters.`;
         }
         if (status === 401) {

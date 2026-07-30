@@ -219,6 +219,12 @@ export async function execute(
 				extractionStrategy.params.patterns = ['Email', 'PhoneUS', 'PhoneIntl', 'TwitterHandle', 'Url'];
 			} else if (patternType === 'preset_financial') {
 				extractionStrategy.params.patterns = ['Currency', 'CreditCard', 'Iban', 'Percentage', 'Number'];
+			} else if (patternType === 'llm') {
+				throw new NodeOperationError(
+					this.getNode(),
+					'Pattern Type "LLM Generated Pattern" was removed in v5.10.0 — it called an endpoint that never existed on Crawl4AI\'s REST API and always failed. Choose Built-in, Custom, or a Preset instead.',
+					{ itemIndex: i },
+				);
 			} else {
 				// Custom patterns
 				const customPatternsValues = this.getNodeParameter('customPatterns.patternValues', i, []) as IDataObject[];

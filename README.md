@@ -68,16 +68,16 @@ Full API control via 3 standardized collections (Browser & Session, Crawl Settin
 
 Crawl4AI **v0.9.0** made the Docker API server secure-by-default. Two changes affect this package directly, and there is no client-side workaround for either — both are enforced server-side by design:
 
-1. **Authentication is on by default.** The server binds to `127.0.0.1` unless `CRAWL4AI_API_TOKEN` is set on the container. To reach it from n8n, set that env var and use **Token Authentication** in this package's credentials with a matching Bearer token.
-2. **Untrusted (network) request bodies are restricted.** The server now rejects, with HTTP 400, any request that sets `js_code`, `cookies`, `headers`, `proxy`/`proxy_config`, `extra_args`, `init_scripts`, `user_data_dir`, `cdp_url`, `deep_crawl_strategy`, `magic`, `simulate_user`, or that embeds an `LLMExtractionStrategy` object. This is a deliberate security boundary in Crawl4AI itself (it also blocks its own Python SDK's `/crawl` request path when called over HTTP) — not a bug in this package.
+1. **Authentication is on by default.** The server binds to `127.0.0.1` unless `CRAWL4AI_API_TOKEN` is set on the container. To reach it from n8n (e.g. across a Docker network, which is how this package's default `http://crawl4ai:11235` credential URL is meant to be used), set that env var on the Crawl4AI container and use **Token Authentication** in this package's credentials with a matching Bearer token — otherwise the container isn't reachable at all, not just restricted.
+2. **Untrusted (network) request bodies are restricted.** The server now rejects, with HTTP 400, any `/crawl` or `/crawl/job` request that sets `js_code`, `cookies`, `headers`, `proxy`/`proxy_config`, `extra_args`, `init_scripts`, `user_data_dir`, `cdp_url`, `chrome_channel`, `storage_state`, `session_id`, `deep_crawl_strategy`, `magic`, `simulate_user`, `override_navigator`, or that embeds an `LLMExtractionStrategy`, `LLMContentFilter`, or `LLMTableExtraction` object. This is a deliberate security boundary in Crawl4AI itself — not a bug in this package. A few related options (`ignore_https_errors`, `use_managed_browser`, and similar) aren't rejected but are silently dropped instead, so no error doesn't guarantee they took effect. Enable Stealth Mode is unaffected — it isn't on Crawl4AI's restricted list.
 
 **Practical impact on this package**, running against Crawl4AI **v0.9.0+**:
 
 | Still works | Broken (HTTP 400 from Crawl4AI) |
 |---|---|
-| Get Page Content, CSS/JSON/Regex/SEO Extractor, Discover Links, Health Check (no JS/session/anti-bot options set) | **Ask Question**, **Extract Data**, **LLM Extractor** — all embed `LLMExtractionStrategy` directly in the crawl request |
-| Submit Crawl Job / Submit LLM Job for simple configs | Any operation with **Magic Mode**, **Simulate User**, **Stealth**, cookies, custom headers, a proxy, or a **Crawl Scope** of Follow Links/Full Site that sets `deep_crawl_strategy` |
-| **Submit LLM Job** with the optional JSON Schema field (question-answering or structured extraction via `/llm/job`, which is exempt from the restriction above) | — |
+| Get Page Content, CSS/JSON/Regex/SEO Extractor, Discover Links, Health Check (no session/proxy/anti-bot options set) | **Ask Question**, **Extract Data**, **LLM Extractor** — all embed `LLMExtractionStrategy` directly in the crawl request |
+| Submit Crawl Job / Submit LLM Job for simple configs | **Process Raw HTML** — always sends `base_url`, which is forbidden; broken unconditionally, not just with certain options |
+| **Submit LLM Job** with the optional JSON Schema field (question-answering or structured extraction via `/llm/job`, which is exempt from the restriction above) | Any operation with **Magic Mode**, **Simulate User**, **Override Navigator**, cookies, custom headers, a proxy, a session ID, storage state, a browser channel, a **Crawl Scope**/Discover mode that sets `deep_crawl_strategy`, or an **LLM** Content Filter / LLM Table Extraction under Output & Filtering |
 
 If you rely on the broken features, run Crawl4AI **v0.8.9 or earlier** (last version before the hardening). Otherwise, non-session, non-LLM-embedded operations continue to work on the latest Crawl4AI.
 
