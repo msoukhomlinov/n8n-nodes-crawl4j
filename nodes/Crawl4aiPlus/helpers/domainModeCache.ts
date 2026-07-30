@@ -53,7 +53,15 @@ const storeInstances = new Map<string, KeyvFile>();
 function getStore(configuredPath: string): KeyvFile {
 	const filePath = resolvePath(configuredPath);
 	if (!storeInstances.has(filePath)) {
-		storeInstances.set(filePath, new KeyvFile({ filename: filePath }));
+		const store = new KeyvFile({ filename: filePath });
+		// KeyvFile is an EventEmitter (implements keyv's KeyvStoreAdapter interface),
+		// which conventionally emits 'error' for background I/O failures. Node
+		// terminates the process on an 'error' event with zero listeners, which
+		// would defeat every try/catch in this file's "never break a crawl"
+		// contract — attach a no-op listener so any future emission is swallowed
+		// instead of crashing, matching this module's existing best-effort design.
+		store.on('error', () => {});
+		storeInstances.set(filePath, store);
 	}
 	return storeInstances.get(filePath)!;
 }
