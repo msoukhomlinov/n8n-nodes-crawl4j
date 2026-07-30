@@ -59,6 +59,15 @@ export const description: INodeProperties[] = [
 		},
 		options: [
 			{
+				displayName: 'JSON Schema',
+				name: 'schema',
+				type: 'string',
+				typeOptions: { rows: 8 },
+				default: '',
+				placeholder: '{\n  "type": "object",\n  "properties": {\n    "title": { "type": "string" }\n  },\n  "required": ["title"]\n}',
+				description: 'Optional JSON schema (as a string) for structured extraction instead of free-text Q&A. Leave empty to get a plain-text answer to Extraction Query.',
+			},
+			{
 				displayName: 'Provider Override',
 				name: 'providerOverride',
 				type: 'string',
@@ -107,6 +116,15 @@ export async function execute(
 				throw new NodeOperationError(this.getNode(), 'Extraction Query cannot be empty.', { itemIndex: i });
 			}
 
+			const schemaInput = llmOptions.schema ? String(llmOptions.schema).trim() : '';
+			if (schemaInput) {
+				try {
+					JSON.parse(schemaInput);
+				} catch (err) {
+					throw new NodeOperationError(this.getNode(), `Invalid JSON schema: ${(err as Error).message}`, { itemIndex: i });
+				}
+			}
+
 			try {
 				validateLlmCredentials(credentials, 'Submit LLM Job');
 			} catch (err) {
@@ -128,13 +146,14 @@ export async function execute(
 			const taskId = await crawler.submitLlmJob({
 				url: url.trim(),
 				q: query.trim(),
+				...(schemaInput ? { schema: schemaInput } : {}),
 				...(provider ? { provider } : {}),
 				...(llmOptions.temperature !== undefined && llmOptions.temperature !== '' ? { temperature: Number(llmOptions.temperature) } : {}),
 				...(webhookConfig ? { webhook_config: webhookConfig } : {}),
 			});
 
 			allResults.push({
-				json: formatJobSubmission(taskId),
+				json: formatJobSubmission(taskId, 'llm'),
 				pairedItem: { item: i },
 			});
 		} catch (error) {

@@ -1,6 +1,6 @@
 # Crawl4AI Plus for n8n
 
-> **Enhanced fork** targeting Crawl4AI v0.8.0 with a progressive-disclosure two-node architecture: a Simple node (4 operations) for general users and an Advanced node (15 operations) for power users.
+> **Enhanced fork** targeting Crawl4AI v0.8.x–v0.9.x (see [Crawl4AI Version Compatibility](#crawl4ai-version-compatibility)) with a progressive-disclosure two-node architecture: a Simple node (4 operations) for general users and an Advanced node (15 operations) for power users.
 
 ## Project History & Attribution
 
@@ -43,14 +43,14 @@ Full API control via 3 standardized collections (Browser & Session, Crawl Settin
 - **LLM Extractor** — AI-powered structured extraction with schema support
 - **CSS Extractor** — Structured extraction using `JsonCssExtractionStrategy`
 - **JSON Extractor** — Extract JSON from direct URLs, script tags, or JSON-LD
-- **Regex Extractor** — Pattern-based extraction with built-in, custom, or LLM-generated patterns
+- **Regex Extractor** — Pattern-based extraction with built-in or custom patterns
 - **Cosine Similarity** — Semantic clustering (requires `unclecode/crawl4ai:all` Docker image)
 - **SEO Metadata** — Meta tags, Open Graph, Twitter Cards, JSON-LD, robots, hreflang
 
 **Jobs & Monitoring**
 - **Submit Crawl Job** — Async crawl via `/crawl/job` with webhook support
-- **Submit LLM Job** — Async LLM extraction via `/llm/job`
-- **Get Job Status** — Poll `/job/{task_id}` for results
+- **Submit LLM Job** — Async LLM extraction via `/llm/job` (question-answering, or structured extraction with an optional JSON schema)
+- **Get Job Status** — Poll `/crawl/job/{task_id}` or `/llm/job/{task_id}` for results, depending on which job type was submitted
 - **Health Check** — Server health and endpoint stats
 
 ---
@@ -58,9 +58,28 @@ Full API control via 3 standardized collections (Browser & Session, Crawl Settin
 ## Requirements
 
 - **n8n**: 1.79.1 or higher
-- **Crawl4AI Docker**: 0.8.0
+- **Crawl4AI Docker**: 0.8.0–0.8.9 for full feature support; 0.9.0+ works with reduced functionality (see [Crawl4AI Version Compatibility](#crawl4ai-version-compatibility))
   - Standard operations: `unclecode/crawl4ai:latest`
   - Cosine Similarity Extractor: `unclecode/crawl4ai:all` (includes sentence-transformers)
+
+---
+
+## Crawl4AI Version Compatibility
+
+Crawl4AI **v0.9.0** made the Docker API server secure-by-default. Two changes affect this package directly, and there is no client-side workaround for either — both are enforced server-side by design:
+
+1. **Authentication is on by default.** The server binds to `127.0.0.1` unless `CRAWL4AI_API_TOKEN` is set on the container. To reach it from n8n, set that env var and use **Token Authentication** in this package's credentials with a matching Bearer token.
+2. **Untrusted (network) request bodies are restricted.** The server now rejects, with HTTP 400, any request that sets `js_code`, `cookies`, `headers`, `proxy`/`proxy_config`, `extra_args`, `init_scripts`, `user_data_dir`, `cdp_url`, `deep_crawl_strategy`, `magic`, `simulate_user`, or that embeds an `LLMExtractionStrategy` object. This is a deliberate security boundary in Crawl4AI itself (it also blocks its own Python SDK's `/crawl` request path when called over HTTP) — not a bug in this package.
+
+**Practical impact on this package**, running against Crawl4AI **v0.9.0+**:
+
+| Still works | Broken (HTTP 400 from Crawl4AI) |
+|---|---|
+| Get Page Content, CSS/JSON/Regex/SEO Extractor, Discover Links, Health Check (no JS/session/anti-bot options set) | **Ask Question**, **Extract Data**, **LLM Extractor** — all embed `LLMExtractionStrategy` directly in the crawl request |
+| Submit Crawl Job / Submit LLM Job for simple configs | Any operation with **Magic Mode**, **Simulate User**, **Stealth**, cookies, custom headers, a proxy, or a **Crawl Scope** of Follow Links/Full Site that sets `deep_crawl_strategy` |
+| **Submit LLM Job** with the optional JSON Schema field (question-answering or structured extraction via `/llm/job`, which is exempt from the restriction above) | — |
+
+If you rely on the broken features, run Crawl4AI **v0.8.9 or earlier** (last version before the hardening). Otherwise, non-session, non-LLM-embedded operations continue to work on the latest Crawl4AI.
 
 ---
 
@@ -92,7 +111,7 @@ Then restart your n8n instance. The nodes are declared in `package.json → "n8n
 1. **Settings → Credentials → New → Crawl4AI API**
 2. Configure:
    - **Docker URL** — URL of your Crawl4AI container (default: `http://crawl4ai:11235`)
-   - **Authentication** — Defaults to **No Authentication**, which is correct for a standard Docker quickstart deployment. Switch to Token or Basic auth only if your Crawl4AI instance is configured with authentication.
+   - **Authentication** — Defaults to **No Authentication**, correct for a Crawl4AI **v0.8.x** quickstart deployment. Crawl4AI **v0.9.0+** requires authentication by default — set `CRAWL4AI_API_TOKEN` on the Crawl4AI container and switch this to **Token Authentication** with the same value. See [Crawl4AI Version Compatibility](#crawl4ai-version-compatibility).
    - **LLM Settings** — Enable and configure a provider for AI-powered operations:
      - OpenAI, Anthropic, Groq, Ollama, or custom LiteLLM endpoint
 
@@ -240,11 +259,11 @@ All operations return a consistent output object:
 
 For large or long-running crawls, use the async pattern:
 
-1. **Submit Crawl Job** → returns `taskId`
-2. **Get Job Status** (poll with taskId) → returns `status: pending | processing | completed | failed`
+1. **Submit Crawl Job** or **Submit LLM Job** → returns `taskId` and `jobType` (`crawl` or `llm`)
+2. **Get Job Status** (poll with `taskId`, and set **Job Type** to match how it was submitted — crawl and LLM jobs are polled via separate endpoints) → returns `status: pending | processing | completed | failed`
 3. When `completed`, result fields are returned directly at top level alongside `taskId` and `status`
 
-Webhook callbacks are supported in Submit Crawl Job for push-based notification when the job finishes.
+Webhook callbacks are supported in both Submit Crawl Job and Submit LLM Job for push-based notification when the job finishes.
 
 ---
 

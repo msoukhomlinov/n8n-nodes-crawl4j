@@ -1,5 +1,20 @@
 # Changelog
 
+## [5.10.0] - 2026-07-30
+
+### Fixed
+- `getJobStatus` polled `GET /job/{task_id}`, an endpoint that has never existed on Crawl4AI's Docker API — the real endpoints have always been `GET /crawl/job/{task_id}` and `GET /llm/job/{task_id}` (separate per job type, confirmed against Crawl4AI's server source back to v0.8.5). Added a required **Job Type** field (Crawl Job / LLM Job) to Get Job Status so the operation calls the correct path; `Submit Crawl Job`/`Submit LLM Job` output now includes a `jobType` field to chain straight into it.
+- Removed the **LLM Generated Pattern** mode from Regex Extractor. It called `POST /generate_pattern`, which is not and has never been a Crawl4AI Docker REST endpoint — `generate_pattern` only exists as a Python SDK classmethod (`RegexExtractionStrategy.generate_pattern`), which this REST-API-only package cannot reach. Every use of this mode has always failed with a 404. Built-in, custom, and both presets are unaffected.
+
+### Added
+- **Submit LLM Job**: optional JSON Schema field, mapped to `/llm/job`'s `schema` parameter for structured extraction. This is now the only working path for schema-based LLM extraction against a Crawl4AI v0.9.0+ Docker server — see Compatibility notes below.
+- `parseApiError` now recognises Crawl4AI's untrusted-request-rejection message (`"... is not permitted ... from an untrusted request"` / `"... may not be constructed from an untrusted request"`) and returns an actionable explanation instead of a generic "bad request" message.
+
+### Compatibility — Crawl4AI v0.9.0+ Docker API hardening
+Crawl4AI v0.9.0 made the Docker API server secure-by-default (verified directly against `unclecode/crawl4ai`'s `deploy/docker/` source, not just release notes). Two changes affect this package, both enforced server-side with no client-side workaround:
+- Authentication is on by default (server binds loopback unless `CRAWL4AI_API_TOKEN` is set). This package's existing Token Authentication credential already sends the required `Authorization: Bearer` header — no code change needed, only server-side + credential configuration.
+- Every `/crawl` (and `/crawl/job`) request body is now validated as untrusted: Crawl4AI rejects `js_code`, `cookies`, `headers`, `proxy`/`proxy_config`, `extra_args`, `init_scripts`, `user_data_dir`, `cdp_url`, `deep_crawl_strategy`, `magic`, `simulate_user`, and any embedded `LLMExtractionStrategy` with HTTP 400. This breaks **Ask Question**, **Extract Data**, **LLM Extractor**, and any operation using Magic Mode, Simulate User, Stealth, cookies, custom headers, a proxy, or deep-crawl scopes, when run against Crawl4AI v0.9.0+. This is a deliberate upstream security boundary (it blocks the same request shape regardless of caller), not a defect in this package. Full functionality requires Crawl4AI v0.8.9 or earlier; see README's "Crawl4AI Version Compatibility" section for the full breakdown of what still works on v0.9.0+.
+
 ## [5.9.0] - 2026-07-30
 
 ### Fixed
