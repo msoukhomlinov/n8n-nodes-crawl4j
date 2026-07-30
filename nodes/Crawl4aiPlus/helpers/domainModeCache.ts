@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import Keyv from 'keyv';
 import { KeyvFile } from 'keyv-file';
 
 // Bump SCHEMA_VERSION when the shape of DomainCacheSchema changes in a
@@ -44,14 +43,27 @@ function resolvePath(configuredPath: string): string {
 // load the file at construction time and could see stale views of each other's
 // writes. One instance per path avoids both the redundant disk read and
 // inconsistent in-memory state.
+// Used directly (not wrapped in a `keyv` Keyv instance) — KeyvFile already
+// implements get/set/delete with native TTL support. The removed `keyv`
+// wrapper was previously constructed fresh on every call and registered an
+// `error` listener on this singleton each time, leaking one listener per
+// cache operation for the life of the process. See #32.
 const storeInstances = new Map<string, KeyvFile>();
 
-function buildKeyv(configuredPath: string): Keyv<DomainCacheSchema> {
+function getStore(configuredPath: string): KeyvFile {
 	const filePath = resolvePath(configuredPath);
 	if (!storeInstances.has(filePath)) {
-		storeInstances.set(filePath, new KeyvFile({ filename: filePath }));
+		const store = new KeyvFile({ filename: filePath });
+		// KeyvFile is an EventEmitter (implements keyv's KeyvStoreAdapter interface),
+		// which conventionally emits 'error' for background I/O failures. Node
+		// terminates the process on an 'error' event with zero listeners, which
+		// would defeat every try/catch in this file's "never break a crawl"
+		// contract — attach a no-op listener so any future emission is swallowed
+		// instead of crashing, matching this module's existing best-effort design.
+		store.on('error', () => {});
+		storeInstances.set(filePath, store);
 	}
-	return new Keyv<DomainCacheSchema>({ store: storeInstances.get(filePath)! });
+	return storeInstances.get(filePath)!;
 }
 
 // Strip leading www. so example.com and www.example.com share one cache entry.
@@ -64,8 +76,8 @@ export async function getCachedMode(
 	domain: string,
 ): Promise<'antiBotCloudflare' | null> {
 	try {
-		const keyv = buildKeyv(configuredPath);
-		const entry = await keyv.get(normalizeHostname(domain));
+		const store = getStore(configuredPath);
+		const entry = await store.get<DomainCacheSchema>(normalizeHostname(domain));
 		if (!entry) return null;
 		// Forward-compatibility guard: treat unknown schema versions as cache miss.
 		// nodePackageVersion is informational only — never used to invalidate.
@@ -86,11 +98,11 @@ export async function deleteCachedMode(
 	domains: string | string[],
 ): Promise<void> {
 	try {
-		const keyv = buildKeyv(configuredPath);
+		const store = getStore(configuredPath);
 		const normalizedDomains = [
 			...new Set((Array.isArray(domains) ? domains : [domains]).map(normalizeHostname)),
 		];
-		await Promise.all(normalizedDomains.map((d) => keyv.delete(d)));
+		await Promise.all(normalizedDomains.map((d) => store.delete(d)));
 	} catch {
 		// Best-effort — a cache delete failure must never break a crawl
 	}
@@ -110,7 +122,7 @@ export async function setCachedMode(
 	ttlDays: number,
 ): Promise<void> {
 	try {
-		const keyv = buildKeyv(configuredPath);
+		const store = getStore(configuredPath);
 		const value: DomainCacheSchema = {
 			schemaVersion: SCHEMA_VERSION,
 			nodePackageVersion: NODE_PACKAGE_VERSION,
@@ -120,7 +132,7 @@ export async function setCachedMode(
 		const normalizedDomains = [
 			...new Set((Array.isArray(domains) ? domains : [domains]).map(normalizeHostname)),
 		];
-		await Promise.all(normalizedDomains.map((d) => keyv.set(d, value, ttlMs)));
+		await Promise.all(normalizedDomains.map((d) => store.set(d, value, ttlMs)));
 	} catch {
 		// Best-effort — a cache write failure must never break a crawl
 	}

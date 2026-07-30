@@ -19,6 +19,11 @@
  * with every n8n install and needs no nested copy under this package, so the
  * deepest part of this corruption vector is gone at the source.
  *
+ * Note: `keyv` was itself removed as a dependency of this package (v5.9.0) —
+ * `domainModeCache.js` now uses `keyv-file` directly instead of wrapping it in
+ * a `keyv` instance, removing a keyv major-version split (v4 vs. v5) against
+ * other packages sharing this tree (#32).
+ *
  * This script fully loads (require()s, not just resolves) each remaining runtime
  * dependency immediately at install time, so the failure is caught early with a
  * clear, actionable message rather than deferred to n8n startup. Requiring —
@@ -26,8 +31,8 @@
  * that a module's own entry file exists; it never executes the module, so it
  * cannot detect corruption in that module's OWN transitive dependencies. Fully
  * requiring each dep pulls in its whole graph, so a truncated nested file
- * anywhere under one of these four packages throws here and is caught, not just
- * corruption of the four entry files. The remaining four deps have shallower
+ * anywhere under one of these three packages throws here and is caught, not just
+ * corruption of the three entry files. The remaining three deps have shallower
  * trees than axios did, but the mechanism is kept unchanged as defense in depth.
  *
  * Plain CommonJS with no build step and no dependency on `dist/` or any
@@ -35,7 +40,7 @@
  * `node scripts/verify-install.js`.
  */
 
-var REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv', 'keyv-file'];
+var REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv-file'];
 
 var failed = [];
 
