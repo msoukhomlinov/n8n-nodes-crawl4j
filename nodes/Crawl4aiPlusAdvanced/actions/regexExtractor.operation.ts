@@ -6,13 +6,11 @@ import type {
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 
-import type { Crawl4aiApiCredentials, Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
+import type { Crawl4aiNodeOptions, ExtractionStrategy, FullCrawlConfig } from '../helpers/interfaces';
 import {
 	getCrawl4aiClient,
 	createBrowserConfig,
 	createCrawlerRunConfig,
-	buildLlmConfig,
-	validateLlmCredentials,
 	cleanExtractedData,
 	isValidUrl,
 	normalizeUrlProtocol,
@@ -51,11 +49,6 @@ export const description: INodeProperties[] = [
 				description: 'Define your own regex patterns',
 			},
 			{
-				name: 'LLM Generated Pattern',
-				value: 'llm',
-				description: 'Let LLM generate a regex pattern from natural language description',
-			},
-			{
 				name: 'Preset: Contact Info',
 				value: 'preset_contact',
 				description: 'Extract emails, phone numbers, and social media handles',
@@ -67,7 +60,7 @@ export const description: INodeProperties[] = [
 			},
 		],
 		default: 'builtin',
-		description: 'Choose between presets, built-in patterns, custom, or LLM-generated regex patterns',
+		description: 'Choose between presets, built-in patterns, or custom regex patterns',
 		displayOptions: {
 			show: {
 				operation: ['regexExtractor'],
@@ -153,54 +146,6 @@ export const description: INodeProperties[] = [
 		],
 	},
 	{
-		displayName: 'Pattern Label',
-		name: 'llmLabel',
-		type: 'string',
-		required: true,
-		default: '',
-		placeholder: 'price',
-		description: 'Label for the generated pattern (e.g., "price", "email", "product_id")',
-		displayOptions: {
-			show: {
-				operation: ['regexExtractor'],
-				patternType: ['llm'],
-			},
-		},
-	},
-	{
-		displayName: 'Pattern Query',
-		name: 'llmQuery',
-		type: 'string',
-		typeOptions: {
-			rows: 3,
-		},
-		required: true,
-		default: '',
-		placeholder: 'Prices in US dollars (e.g., $1,299.00 or $200)',
-		description: 'Natural language description of what you want to extract. Be specific with examples.',
-		displayOptions: {
-			show: {
-				operation: ['regexExtractor'],
-				patternType: ['llm'],
-			},
-		},
-	},
-	{
-		displayName: 'Sample URL',
-		name: 'llmSampleUrl',
-		type: 'string',
-		required: true,
-		default: '',
-		placeholder: 'https://example.com/sample-page',
-		description: 'URL of a sample page containing the data you want to extract (used to train the LLM)',
-		displayOptions: {
-			show: {
-				operation: ['regexExtractor'],
-				patternType: ['llm'],
-			},
-		},
-	},
-	{
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',
@@ -241,7 +186,6 @@ export async function execute(
 ): Promise<INodeExecutionData[]> {
 	const allResults: INodeExecutionData[] = [];
 	const crawler = await getCrawl4aiClient(this);
-	const credentials = await this.getCredentials('crawl4aiPlusApi') as unknown as Crawl4aiApiCredentials;
 
 	for (let i = 0; i < items.length; i++) {
 		try {
@@ -276,71 +220,11 @@ export async function execute(
 			} else if (patternType === 'preset_financial') {
 				extractionStrategy.params.patterns = ['Currency', 'CreditCard', 'Iban', 'Percentage', 'Number'];
 			} else if (patternType === 'llm') {
-				const llmLabel = this.getNodeParameter('llmLabel', i, '') as string;
-				const llmQuery = this.getNodeParameter('llmQuery', i, '') as string;
-				const llmSampleUrl = normalizeUrlProtocol(this.getNodeParameter('llmSampleUrl', i, '') as string);
-
-				if (!llmLabel) {
-					throw new NodeOperationError(this.getNode(), 'Pattern label is required for LLM pattern generation.', { itemIndex: i });
-				}
-
-				if (!llmQuery) {
-					throw new NodeOperationError(this.getNode(), 'Pattern query is required for LLM pattern generation.', { itemIndex: i });
-				}
-
-				if (!llmSampleUrl || !isValidUrl(llmSampleUrl)) {
-					throw new NodeOperationError(this.getNode(), 'Valid sample URL is required for LLM pattern generation.', { itemIndex: i });
-				}
-
-				try {
-					validateLlmCredentials(credentials, 'LLM pattern generation');
-				} catch (err) {
-					throw new NodeOperationError(this.getNode(), (err as Error).message, { itemIndex: i });
-				}
-
-				// Crawl sample URL first
-				const sampleBrowserConfig = createBrowserConfig(bs);
-				const sampleConfig: FullCrawlConfig = {
-					...sampleBrowserConfig,
-					cacheMode: 'BYPASS',
-				};
-
-				const sampleResult = await crawler.crawlUrl(llmSampleUrl, sampleConfig);
-
-				if (!sampleResult.success) {
-					throw new NodeOperationError(
-						this.getNode(),
-						`Failed to crawl sample URL: ${sampleResult.error_message || 'Unknown error'}`,
-						{ itemIndex: i },
-					);
-				}
-
-				const md = sampleResult.markdown;
-				const sampleHtml = (typeof md === 'object' && md !== null && md.fit_html)
-					? md.fit_html
-					: sampleResult.cleaned_html || sampleResult.html || '';
-
-				if (!sampleHtml) {
-					throw new NodeOperationError(this.getNode(), 'Failed to extract HTML from sample URL', { itemIndex: i });
-				}
-
-				const { llmConfig } = buildLlmConfig(credentials);
-				const patternGenPayload: Record<string, unknown> = {
-					label: llmLabel,
-					html: sampleHtml,
-					query: llmQuery,
-					llm_config: llmConfig,
-				};
-
-				const generatedPattern = await crawler.generateRegexPattern(patternGenPayload);
-				if (!generatedPattern || typeof generatedPattern !== 'object') {
-					throw new NodeOperationError(
-						this.getNode(),
-						'LLM pattern generation returned an unexpected response. Check your LLM credentials and try again.',
-						{ itemIndex: i },
-					);
-				}
-				extractionStrategy.params.custom_patterns = generatedPattern;
+				throw new NodeOperationError(
+					this.getNode(),
+					'Pattern Type "LLM Generated Pattern" was removed in v5.10.0 — it called an endpoint that never existed on Crawl4AI\'s REST API and always failed. Choose Built-in, Custom, or a Preset instead.',
+					{ itemIndex: i },
+				);
 			} else {
 				// Custom patterns
 				const customPatternsValues = this.getNodeParameter('customPatterns.patternValues', i, []) as IDataObject[];

@@ -8,10 +8,28 @@ import { NodeOperationError } from 'n8n-workflow';
 
 import type { Crawl4aiNodeOptions, CrawlResult } from '../helpers/interfaces';
 import { getCrawl4aiClient } from '../../shared/utils';
+import { explainUntrustedConfigRejection } from '../../shared/apiClient';
 import { formatCrawlResult } from '../helpers/formatters';
 
 // --- UI Definition ---
 export const description: INodeProperties[] = [
+	{
+		displayName: 'Job Type',
+		name: 'jobType',
+		type: 'options',
+		required: true,
+		options: [
+			{ name: 'Crawl Job', value: 'crawl', description: 'Job submitted via Submit Crawl Job' },
+			{ name: 'LLM Job', value: 'llm', description: 'Job submitted via Submit LLM Job' },
+		],
+		default: 'crawl',
+		description: 'Crawl4AI polls crawl jobs and LLM jobs via separate endpoints — must match how the Task ID was submitted',
+		displayOptions: {
+			show: {
+				operation: ['getJobStatus'],
+			},
+		},
+	},
 	{
 		displayName: 'Task ID',
 		name: 'taskId',
@@ -19,7 +37,7 @@ export const description: INodeProperties[] = [
 		required: true,
 		default: '',
 		placeholder: 'abc123-...',
-		description: 'The task_id returned from Submit Crawl Job or Submit LLM Job',
+		description: 'The taskId returned from Submit Crawl Job or Submit LLM Job',
 		displayOptions: {
 			show: {
 				operation: ['getJobStatus'],
@@ -41,11 +59,12 @@ export async function execute(
 	for (let i = 0; i < items.length; i++) {
 		try {
 			const taskId = this.getNodeParameter('taskId', i, '') as string;
+			const jobType = this.getNodeParameter('jobType', i, 'crawl') as 'crawl' | 'llm';
 
 			if (!taskId || !taskId.trim()) {
 				throw new NodeOperationError(this.getNode(), 'Task ID cannot be empty.', { itemIndex: i });
 			}
-			const statusResponse = await crawler.getJobStatus(taskId.trim());
+			const statusResponse = await crawler.getJobStatus(taskId.trim(), jobType);
 			const checkedAt = new Date().toISOString();
 
 			// If completed and result data available, format the crawl results
@@ -90,12 +109,15 @@ export async function execute(
 					});
 				}
 			} else {
+				const rawError = statusResponse.error;
+				const error = rawError ? (explainUntrustedConfigRejection(rawError) ?? rawError) : undefined;
 				allResults.push({
 					json: {
 						taskId: statusResponse.task_id,
 						status: statusResponse.status,
 						checkedAt,
 						...(statusResponse.message ? { message: statusResponse.message } : {}),
+						...(error ? { error } : {}),
 					} as IDataObject,
 					pairedItem: { item: i },
 				});

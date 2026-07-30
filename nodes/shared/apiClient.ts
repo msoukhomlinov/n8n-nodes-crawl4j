@@ -1,6 +1,20 @@
 import type { IHttpRequestOptions } from 'n8n-workflow';
 import { Crawl4aiApiCredentials, FullCrawlConfig, CrawlResult, CrawlJobRequest, JobStatusResponse, MonitorHealth, LlmJobRequest } from './interfaces';
 
+const UNTRUSTED_CONFIG_REJECTION = /not permitted .* from an untrusted request|may not be constructed from an untrusted request/;
+
+/**
+ * Crawl4AI Docker API v0.9.0+ rejects certain fields/strategy types when sent
+ * over the network (see README "Crawl4AI Version Compatibility"). Both the
+ * synchronous /crawl 400 response and an async job's stored error use the
+ * same underlying message text, so this is shared between parseApiError()
+ * and getJobStatus's failed-job handling.
+ */
+export function explainUntrustedConfigRejection(detail: string): string | null {
+  if (!UNTRUSTED_CONFIG_REJECTION.test(detail)) return null;
+  return `Rejected by Crawl4AI: ${detail}. Crawl4AI Docker API server v0.9.0+ blocks this field/strategy over the network as a security measure (js_code, cookies, headers, proxy, magic/simulate_user, deep_crawl_strategy, and LLM-based extraction strategies are all affected) — there is no client-side workaround. See this package's README "Crawl4AI Version Compatibility" section, or use a Crawl4AI server on v0.8.9 or earlier for full feature support.`;
+}
+
 /**
  * Minimal structural type for the n8n request helper this client depends on.
  * Kept intentionally narrow (not the full IExecuteFunctions) so the client can
@@ -108,6 +122,9 @@ export class Crawl4aiClient {
         const detail = data?.detail || data?.error || data?.message;
 
         if (status === 400) {
+          const detailStr = typeof detail === 'string' ? detail : '';
+          const untrustedExplanation = explainUntrustedConfigRejection(detailStr);
+          if (untrustedExplanation) return untrustedExplanation;
           return `Invalid request (400): ${detail || 'Bad request format'}. Check your configuration parameters.`;
         }
         if (status === 401) {
@@ -294,11 +311,13 @@ export class Crawl4aiClient {
   }
 
   /**
-   * Get async job status — GET /job/{task_id}
+   * Get async job status — GET /crawl/job/{task_id} or GET /llm/job/{task_id}.
+   * There is no unified /job/{task_id} endpoint; crawl and LLM jobs are polled
+   * via separate paths, so the caller must know which kind of job it submitted.
    */
-  async getJobStatus(taskId: string): Promise<JobStatusResponse> {
+  async getJobStatus(taskId: string, jobType: 'crawl' | 'llm'): Promise<JobStatusResponse> {
     try {
-      const result = await this.request('GET', `/job/${taskId}`);
+      const result = await this.request('GET', `/${jobType}/job/${taskId}`);
       return result as JobStatusResponse;
     } catch (error) {
       throw new Error(this.parseApiError(error));
@@ -569,21 +588,6 @@ export class Crawl4aiClient {
     return Object.keys(params).length > 0 ? params : {};
   }
 
-  /**
-   * Generate regex pattern using LLM
-   */
-  async generateRegexPattern(payload: Record<string, unknown>): Promise<unknown> {
-    try {
-      const result = await this.request('POST', '/generate_pattern', payload);
-      return result;
-    } catch (error: unknown) {
-      const errorMessage = this.parseApiError(error);
-      if (this.isAxiosLikeError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-        throw new Error(`${errorMessage} Check your LLM credentials in the node settings.`);
-      }
-      throw new Error(errorMessage);
-    }
-  }
 }
 
 /**

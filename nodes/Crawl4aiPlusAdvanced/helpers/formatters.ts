@@ -6,9 +6,10 @@ export { formatCrawlResult, formatExtractionResult, parseExtractedJson } from '.
 /**
  * Format job submission response for async operations
  */
-export function formatJobSubmission(taskId: string): IDataObject {
+export function formatJobSubmission(taskId: string, jobType: 'crawl' | 'llm'): IDataObject {
   return {
     taskId,
+    jobType,
     status: 'pending',
     submittedAt: new Date().toISOString(),
   };

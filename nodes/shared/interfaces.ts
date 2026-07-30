@@ -302,12 +302,13 @@ export interface CrawlJobRequest {
 	webhook_config?: WebhookConfig;
 }
 
-// Job status response (GET /job/{task_id})
+// Job status response (GET /crawl/job/{task_id} or GET /llm/job/{task_id})
 export interface JobStatusResponse {
 	task_id: string;
 	status: 'pending' | 'processing' | 'completed' | 'failed';
 	result?: CrawlResult | CrawlResult[];
 	message?: string;
+	error?: string;
 }
 
 // Monitor health response (GET /monitor/health)
@@ -324,6 +325,7 @@ export interface MonitorHealth {
 export interface LlmJobRequest {
 	url: string;
 	q: string;
+	schema?: string;
 	provider?: string;
 	temperature?: number;
 	webhook_config?: WebhookConfig;

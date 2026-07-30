@@ -1,7 +1,7 @@
 {
   "name": "n8n-nodes-crawl4ai-plus",
-  "version": "5.9.0",
-  "description": "n8n nodes for Crawl4AI v0.8.5 web crawler and data extraction with enhanced features",
+  "version": "5.10.0",
+  "description": "n8n nodes for Crawl4AI (v0.8.x–v0.9.x) web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
     "n8n-community-node-package",

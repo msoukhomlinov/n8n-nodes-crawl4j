@@ -87,7 +87,7 @@ export async function execute(
 			});
 
 			allResults.push({
-				json: formatJobSubmission(taskId),
+				json: formatJobSubmission(taskId, 'crawl'),
 				pairedItem: { item: i },
 			});
 		} catch (error) {
