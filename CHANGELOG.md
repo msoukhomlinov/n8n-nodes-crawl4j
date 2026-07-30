@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.9.0] - 2026-07-30
+
+### Fixed
+- Removed `keyv` as a dependency entirely (#32). `domainModeCache.ts` previously wrapped `keyv-file` in a `keyv` instance purely for its `get`/`set`/`delete` API surface, but `keyv-file` already implements that same interface natively (including TTL), so the wrapper was unnecessary. In shared n8n community-node `node_modules` trees, this package's direct `keyv@^5.6.0` pin sat on one side of a live keyv major-version split against other packages/community-nodes pinning `keyv@4` (e.g. `cacheable-request`, `flat-cache`), which made npm's dependency resolution during install/update more fragile than a fully-aligned tree needs to be. Removing the dependency removes this package's contribution to that split.
+- The removed `keyv` wrapper was also constructed fresh on every single cache read/write (`getCachedMode`/`deleteCachedMode`/`setCachedMode` each called `buildKeyv()`), and `keyv`'s constructor registers an `error` listener on the underlying store every time it's built. Since the underlying `KeyvFile` store instance is a long-lived singleton (one per resolved cache-file path, shared across every call), this leaked one `error` listener per cache operation onto that singleton for the lifetime of the n8n process — past Node's default limit of 10 listeners this would print `MaxListenersExceededWarning` and grow unbounded. Calling `KeyvFile`'s own methods directly removes the per-call wrapper (and the leak) entirely.
+- `REQUIRED_DEPENDENCIES` in both `scripts/verify-install.js` and `nodes/shared/verifyNestedDependencies.ts` narrowed to `['zod', 'libphonenumber-js', 'keyv-file']` (`keyv` dropped, three remain).
+
+### Changed
+- `keyv@5.6.0` defaults to a `keyv:`-prefixed namespace on every key, so existing on-disk domain-mode cache entries written by prior versions are stored under keys like `keyv:example.com`. The new code reads the bare `example.com` key directly, so old entries are simply never looked up again (a clean cache miss, not an error) — no crash, no manual migration needed. The cache is a soft, self-healing optimisation (Anti-Bot mode detection), not persisted data with any correctness requirement, and stale `keyv:`-prefixed entries are inert and will expire via their original TTL.
+
 ## [5.8.0] - 2026-07-09
 
 ### Fixed

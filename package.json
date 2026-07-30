@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-crawl4ai-plus",
-  "version": "5.8.0",
+  "version": "5.9.0",
   "description": "n8n nodes for Crawl4AI v0.8.5 web crawler and data extraction with enhanced features",
   "keywords": [
     "n8n",
@@ -61,7 +61,6 @@
     "n8n-workflow": "*"
   },
   "dependencies": {
-    "keyv": "^5.6.0",
     "keyv-file": "^5.3.3",
     "libphonenumber-js": "^1.12.42",
     "zod": "^3.22.0"

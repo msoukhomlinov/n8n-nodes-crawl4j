@@ -126,13 +126,13 @@ Error: Cannot find module '/home/node/.n8n/nodes/node_modules/n8n-nodes-crawl4ai
 
 followed by `Unrecognized node type: n8n-nodes-crawl4ai-plus.crawl4aiPlus`.
 
-**Cause:** In n8n **queue mode** with multiple workers sharing a single `.n8n/nodes` volume, the npm install into that shared directory can be interrupted by a race between the main process and worker processes touching the same `node_modules` tree concurrently on container start. This can leave one of this package's nested dependencies (`zod`, `libphonenumber-js`, `keyv`, or `keyv-file`) truncated — the package directory exists but is missing its actual entry-point file. Because n8n only runs npm install once per package and doesn't re-check already-"present" node_modules on restart, this corruption persists across restarts until manually repaired.
+**Cause:** In n8n **queue mode** with multiple workers sharing a single `.n8n/nodes` volume, the npm install into that shared directory can be interrupted by a race between the main process and worker processes touching the same `node_modules` tree concurrently on container start. This can leave one of this package's nested dependencies (`zod`, `libphonenumber-js`, or `keyv-file`) truncated — the package directory exists but is missing its actual entry-point file. Because n8n only runs npm install once per package and doesn't re-check already-"present" node_modules on restart, this corruption persists across restarts until manually repaired.
 
 **Fix:** Reinstall the affected dependency scoped to this package's directory, inside the container/volume where n8n resolves community nodes from:
 
 ```bash
 cd <path-to-.n8n>/nodes/node_modules/n8n-nodes-crawl4ai-plus
-npm install --no-save --legacy-peer-deps zod libphonenumber-js keyv keyv-file
+npm install --no-save --legacy-peer-deps zod libphonenumber-js keyv-file
 ```
 
 Pin exact versions if you want to match what was originally installed — check this package's own `node_modules/.package-lock.json` for the resolved versions, or pass `zod@<version>` etc. explicitly. Then restart n8n.

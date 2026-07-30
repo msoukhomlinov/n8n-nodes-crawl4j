@@ -40,17 +40,23 @@ declare const require: {
  * ships with every n8n install and needs no nested copy under this package, so
  * the deepest part of this corruption vector is gone at the source.
  *
+ * Note: `keyv` was itself removed as a dependency of this package (v5.9.0) —
+ * `domainModeCache.ts` now uses `keyv-file` directly instead of wrapping it in
+ * a `keyv` instance (`KeyvFile` already has native get/set/delete/TTL
+ * support). This also removes a keyv major-version split (v4 vs. v5) against
+ * other packages sharing this tree (#32).
+ *
  * The check fully `require()`s each remaining dependency (not just
  * `require.resolve()`s its path) on purpose: `require.resolve()` confirms only
  * that a package's own entry file exists, without executing it, so it cannot see
  * corruption in that package's OWN transitive dependencies. Fully requiring each
  * dep pulls in its whole graph, so a truncated nested file anywhere under one of
- * these four packages (not just the four entry files) is caught here too. The
- * remaining four deps have shallower trees than axios did, but the mechanism is
+ * these three packages (not just the three entry files) is caught here too. The
+ * remaining three deps have shallower trees than axios did, but the mechanism is
  * kept unchanged as defense in depth — it costs nothing extra and catches at
  * least as much as `require.resolve()` would.
  */
-const REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv', 'keyv-file'] as const;
+const REQUIRED_DEPENDENCIES = ['zod', 'libphonenumber-js', 'keyv-file'] as const;
 
 const missing: string[] = [];
 
